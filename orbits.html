@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Planetary Orbits Simulation</title>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    canvas {
+      border: 1px solid #333;
+      background: #000;
+      margin: 10px;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 16px;
+      background: #222;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <h2>🌍 Planetary Orbits & N-Body Simulation</h2>
+  <canvas id="simulationCanvas" width="800" height="600"></canvas><br/>
+  <button onclick="addPlanet()">➕ Add Planet</button>
+  <button onclick="removePlanet()">➖ Remove Planet</button>
+  <button onclick="togglePause()"><span id="pauseBtnText">⏸️ Pause</span></button>
+  <button onclick="resetSimulation()">🔁 Reset</button>
+
+  <script>
+    const canvas = document.getElementById("simulationCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const G = 6.67430e-11;
+    const SCALE = 2e-9; // Adjusted to fit smaller screen
+    const TIMESTEP = 60 * 60 * 12; // 12 hours per frame
+    let paused = false;
+
+    class Body {
+      constructor(name, x, y, vx, vy, mass, radius, color) {
+        this.name = name;
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.mass = mass;
+        this.radius = radius;
+        this.color = color;
+        this.trail = [];
+      }
+
+      applyGravity(bodies) {
+        let ax = 0, ay = 0;
+        for (let other of bodies) {
+          if (other === this) continue;
+          let dx = other.x - this.x;
+          let dy = other.y - this.y;
+          let distSq = dx * dx + dy * dy;
+          let dist = Math.sqrt(distSq) + 1e3;
+          let force = G * other.mass / distSq;
+          ax += force * dx / dist;
+          ay += force * dy / dist;
+        }
+        this.vx += ax * TIMESTEP;
+        this.vy += ay * TIMESTEP;
+      }
+
+      update() {
+        this.x += this.vx * TIMESTEP;
+        this.y += this.vy * TIMESTEP;
+
+        if (this.inView()) {
+          this.trail.push([this.x, this.y]);
+          if (this.trail.length > 1000) this.trail.shift();
+        }
+      }
+
+      inView() {
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        let sx = cx + this.x * SCALE;
+        let sy = cy + this.y * SCALE;
+        return sx >= 0 && sx <= canvas.width && sy >= 0 && sy <= canvas.height;
+      }
+
+      draw() {
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        // Trail
+        ctx.beginPath();
+        for (let i = 0; i < this.trail.length - 1; i++) {
+          let [x1, y1] = this.trail[i];
+          let [x2, y2] = this.trail[i + 1];
+          ctx.moveTo(cx + x1 * SCALE, cy + y1 * SCALE);
+          ctx.lineTo(cx + x2 * SCALE, cy + y2 * SCALE);
+        }
+        ctx.strokeStyle = this.color + "AA";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Body
+        ctx.beginPath();
+        ctx.arc(cx + this.x * SCALE, cy + this.y * SCALE, this.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+      }
+    }
+
+    const bodies = [];
+
+    function createDefaultSystem() {
+      bodies.length = 0;
+
+      const sun = new Body("Sun", 0, 0, 0, 0, 1.989e30, 10, "yellow");
+      const earth = new Body("Earth", 1.496e11, 0, 0, 29780, 5.972e24, 5, "skyblue");
+
+      bodies.push(sun, earth);
+    }
+
+    function addPlanet() {
+      const distance = 1.2e11 + Math.random() * 2e11;
+      const angle = Math.random() * 2 * Math.PI;
+
+      const x = distance * Math.cos(angle);
+      const y = distance * Math.sin(angle);
+
+      const centralMass = bodies[0].mass;
+      const circularVel = Math.sqrt(G * centralMass / distance);
+
+      const tangentialFactor = 0.6 + Math.random() * 1.0; // 60% to 160%
+      const radialFactor = (Math.random() - 0.5) * 0.6;   // small inward/outward
+
+      const speedT = circularVel * tangentialFactor;
+      const speedR = circularVel * radialFactor;
+
+      const tx = -Math.sin(angle);
+      const ty = Math.cos(angle);
+      const rx = Math.cos(angle);
+      const ry = Math.sin(angle);
+
+      const vx = speedT * tx + speedR * rx;
+      const vy = speedT * ty + speedR * ry;
+
+      const colorList = ["lightgreen", "orange", "violet", "white", "deepskyblue"];
+      const color = colorList[Math.floor(Math.random() * colorList.length)];
+
+      const planet = new Body("Planet" + bodies.length, x, y, vx, vy, 1e24 + Math.random() * 3e24, 4, color);
+      bodies.push(planet);
+    }
+
+    function removePlanet() {
+      if (bodies.length > 2) bodies.pop();
+    }
+
+    function resetSimulation() {
+      createDefaultSystem();
+    }
+
+    function togglePause() {
+      paused = !paused;
+      document.getElementById("pauseBtnText").textContent = paused ? "▶️ Run" : "⏸️ Pause";
+    }
+
+    function update() {
+      for (let body of bodies) body.applyGravity(bodies);
+      for (let body of bodies) body.update();
+    }
+
+    function draw() {
+      ctx.fillStyle = "rgba(10, 10, 10, 0.4)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let body of bodies) body.draw();
+    }
+
+    function loop() {
+      if (!paused) update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    createDefaultSystem();
+    loop();
+  </script>
+</body>
+</html>
